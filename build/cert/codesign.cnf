@@ -1,0 +1,17 @@
+[ req ]
+default_bits        = 2048
+distinguished_name  = req_distinguished_name
+prompt              = no
+x509_extensions     = v3_codesign
+
+[ req_distinguished_name ]
+CN = Keuangan Nawawi
+O  = Yayasan Imam Nawawi
+C  = ID
+
+[ v3_codesign ]
+keyUsage = critical, digitalSignature
+extendedKeyUsage = codeSigning
+basicConstraints = critical, CA:true
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid:always,issuer

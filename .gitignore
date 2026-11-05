@@ -1,0 +1,21 @@
+build/bin
+node_modules
+**/node_modules/
+frontend/dist
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Certificates, Keys & Credentials
+*.pem
+*.key
+*.cer
+*.crt
+*.p12
+
+# OS files
+.DS_Store
+Thumbs.db
+

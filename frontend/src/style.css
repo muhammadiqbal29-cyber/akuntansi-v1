@@ -1,0 +1,79 @@
+html {
+    background-color: rgba(27, 38, 54, 1);
+    text-align: center;
+    color: white;
+}
+
+body {
+    margin: 0;
+    color: white;
+    font-family: "Nunito", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto",
+    "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
+    sans-serif;
+}
+
+@font-face {
+    font-family: "Nunito";
+    font-style: normal;
+    font-weight: 400;
+    src: local(""),
+    url("assets/fonts/nunito-v16-latin-regular.woff2") format("woff2");
+}
+
+#app {
+    height: 100vh;
+    text-align: center;
+}
+
+@media print {
+    /* Sembunyikan elemen navigasi dan kontrol antarmuka */
+    .sidebar, aside, .no-print, .toast-container, .modal-overlay {
+        display: none !important;
+    }
+    
+    /* Reset dimensi dan latar belakang webview agar tepat 1 halaman lebar penuh di kertas */
+    body, html, #app, .app-container, .main-content {
+        height: auto !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        overflow: visible !important;
+        background: #ffffff !important;
+        color: #000000 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        position: static !important;
+    }
+    
+    /* Hapus shadow dan border penampung praterbang */
+    .print-preview-container, .print-paper {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-shadow: none !important;
+        border: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #ffffff !important;
+        color: #000000 !important;
+    }
+
+    /* Optimalisasi pemotongan tabel dan baris saat dicetak multi-halaman */
+    table {
+        width: 100% !important;
+        border-collapse: collapse !important;
+        page-break-inside: auto !important;
+    }
+    
+    tr {
+        page-break-inside: avoid !important;
+        page-break-after: auto !important;
+    }
+    
+    thead {
+        display: table-header-group !important;
+    }
+    
+    .print-signature-section {
+        page-break-inside: avoid !important;
+        display: block !important;
+    }
+}
