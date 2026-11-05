@@ -161,3 +161,12 @@ export function UpdateSiswa(arg1) {
 export function UpdateTransaksi(arg1, arg2) {
   return window['go']['main']['App']['UpdateTransaksi'](arg1, arg2);
 }
+
+export function CreateTransaksiSimpel(arg1) {
+  return window['go']['main']['App']['CreateTransaksiSimpel'](arg1);
+}
+
+export function GetLaporanJHK(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GetLaporanJHK'](arg1, arg2, arg3);
+}
+

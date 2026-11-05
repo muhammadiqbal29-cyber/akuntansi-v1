@@ -155,3 +155,39 @@ type LaporanKonsolidasiResponse struct {
 	Aktivitas    []LaporanKonsolidasiGroup `json:"aktivitas"`
 	ArusKas      []LaporanKonsolidasiGroup `json:"arus_kas"`
 }
+
+type TransaksiSimpelInput struct {
+	EntitasID      int    `json:"entitas_id"`
+	Jenis          string `json:"jenis"` // "Pengeluaran" atau "Pemasukan"
+	Tanggal        string `json:"tanggal"`
+	NoReferensi    string `json:"no_referensi"`
+	Keterangan     string `json:"keterangan"`
+	AkunID         int    `json:"akun_id"`
+	IsBank         bool   `json:"is_bank"`
+	RekeningBankID *int   `json:"rekening_bank_id,omitempty"`
+	Nominal        int64  `json:"nominal"`
+}
+
+type LaporanJHKItem struct {
+	Kode        string `json:"kode"`
+	NamaPos     string `json:"nama_pos"`
+	SaldoAwal   int64  `json:"saldo_awal"`
+	Debet       int64  `json:"debet"`       // Pemasukan bulan ini
+	Kredit      int64  `json:"kredit"`      // Pengeluaran bulan ini
+	Balance     int64  `json:"balance"`     // Debet - Kredit
+	SaldoAkhir  int64  `json:"saldo_akhir"` // SaldoAwal + Balance
+}
+
+type LaporanJHKResponse struct {
+	EntitasName     string           `json:"entitas_name"`
+	Bulan           int              `json:"bulan"`
+	Tahun           int              `json:"tahun"`
+	PeriodeNama     string           `json:"periode_nama"`
+	Items           []LaporanJHKItem `json:"items"`
+	TotalSaldoAwal  int64            `json:"total_saldo_awal"`
+	TotalDebet      int64            `json:"total_debet"`
+	TotalKredit     int64            `json:"total_kredit"`
+	TotalBalance    int64            `json:"total_balance"`
+	TotalSaldoAkhir int64            `json:"total_saldo_akhir"`
+}
+

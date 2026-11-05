@@ -236,56 +236,33 @@ func (a *App) BayarTagihanSiswa(tagihanID int, nominalBayar int64, akunPenerimaI
 }
 
 // mapJenisTagihanToAkun memetakan jenis tagihan ke kode akun dan nama akun yang sesuai
-// berdasarkan Bagan Akun ISAK 35 yang sudah di-seed oleh GenerateISAK35.
+// berdasarkan Bagan Akun Pos Dana Excel (100 SPP, 200 Semester, 300 Seragam, dll.)
 func mapJenisTagihanToAkun(jenisTagihan string) (kodeAkun string, namaAkun string) {
 	jenis := strings.ToLower(jenisTagihan)
 	switch {
 	case strings.Contains(jenis, "spp") || strings.Contains(jenis, "syahriyah"):
-		return "4110", "Pendapatan SPP"
+		return "100", "SPP"
 	case strings.Contains(jenis, "semester"):
-		return "4120", "Pendapatan Semesteran"
+		return "200", "SEMESTERAN"
 	case strings.Contains(jenis, "seragam"):
-		return "4130", "Pendapatan Seragam"
+		return "300", "SERAGAM"
 	case strings.Contains(jenis, "buku") || strings.Contains(jenis, "modul") || strings.Contains(jenis, "kitab") || strings.Contains(jenis, "lks"):
-		return "4140", "Pendapatan Buku"
-	case strings.Contains(jenis, "pangkal") || strings.Contains(jenis, "pembangunan") || strings.Contains(jenis, "wakaf sarana"):
-		return "4150", "Pendapatan Uang Pangkal"
+		return "400", "BUKU"
+	case strings.Contains(jenis, "pangkal") || strings.Contains(jenis, "pembangunan") || strings.Contains(jenis, "sarpras"):
+		return "500", "SARPRAS"
 	case strings.Contains(jenis, "asrama") || strings.Contains(jenis, "boarding"):
-		return "4160", "Pendapatan Asrama"
+		return "600", "ASRAMA"
 	case strings.Contains(jenis, "infaq") || strings.Contains(jenis, "infak") || strings.Contains(jenis, "shadaqah"):
-		return "4170", "Pendapatan Infaq"
+		return "700", "INFAQ"
 	case strings.Contains(jenis, "kegiatan") || strings.Contains(jenis, "ekstra"):
-		return "4120", "Pendapatan Semesteran"
+		return "200", "SEMESTERAN"
 	default:
-		return "4110", "Pendapatan SPP"
+		return "100", "SPP"
 	}
 }
 
 func getOrCreateAkunPendapatan(entitasID int, jenisTagihan string) (int, error) {
-	kodeAkun, namaAkun := mapJenisTagihanToAkun(jenisTagihan)
-
-	var akun models.AkunKeuangan
-	err := database.DB.Where("entitas_id = ? AND kode_akun = ?", entitasID, kodeAkun).First(&akun).Error
-	if err == nil {
-		return akun.ID, nil
-	}
-
-	if err != gorm.ErrRecordNotFound {
-		return 0, err
-	}
-
-	akunBaru := models.AkunKeuangan{
-		EntitasID: entitasID,
-		KodeAkun:  kodeAkun,
-		NamaAkun:  namaAkun,
-		Kategori:  "Pendapatan",
-		Sifat:     "Kredit",
-		Saldo:     0,
-	}
-	if err := database.DB.Create(&akunBaru).Error; err != nil {
-		return 0, err
-	}
-	return akunBaru.ID, nil
+	return getOrCreateAkunPendapatanTx(database.DB, entitasID, jenisTagihan)
 }
 
 // BayarBanyakTagihan memproses pembayaran massal (banyak tagihan) dalam 1 transaksi jurnal
@@ -459,15 +436,37 @@ func getOrCreateAkunPendapatanTx(tx *gorm.DB, entitasID int, jenisTagihan string
 	kodeAkun, namaAkun := mapJenisTagihanToAkun(jenisTagihan)
 
 	var akun models.AkunKeuangan
-	err := tx.Where("entitas_id = ? AND kode_akun = ?", entitasID, kodeAkun).First(&akun).Error
+	// 1. Cek kode pos Excel dulu (100, 200, dst) atau nama akun yang mengandung nama pos
+	err := tx.Where("entitas_id = ? AND (kode_akun = ? OR nama_akun LIKE ?)", entitasID, kodeAkun, "%"+namaAkun+"%").First(&akun).Error
 	if err == nil {
 		return akun.ID, nil
 	}
 
-	if err != gorm.ErrRecordNotFound {
-		return 0, err
+	// 2. Cek kode legacy 4xxx jika ada (misal 4110)
+	legacyKode := ""
+	switch kodeAkun {
+	case "100":
+		legacyKode = "4110"
+	case "200":
+		legacyKode = "4120"
+	case "300":
+		legacyKode = "4130"
+	case "400":
+		legacyKode = "4140"
+	case "500":
+		legacyKode = "4150"
+	case "600":
+		legacyKode = "4160"
+	case "700":
+		legacyKode = "4170"
+	}
+	if legacyKode != "" {
+		if err := tx.Where("entitas_id = ? AND kode_akun = ?", entitasID, legacyKode).First(&akun).Error; err == nil {
+			return akun.ID, nil
+		}
 	}
 
+	// 3. Buat akun baru jika belum ada
 	akunBaru := models.AkunKeuangan{
 		EntitasID: entitasID,
 		KodeAkun:  kodeAkun,

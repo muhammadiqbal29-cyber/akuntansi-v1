@@ -1,7 +1,7 @@
 <script>
   // Force HMR reload for Vite cache invalidation
   import { onMount } from 'svelte';
-  import { GetAkunKeuangan, CreateAkunKeuangan, UpdateAkunKeuangan, DeleteAkunKeuangan, ExportAkunCSV, ImportAkunCSV, GenerateISAK35, GetEntitas, CreateEntitas, GetTransaksi, CreateTransaksi, UpdateTransaksi, DeleteTransaksi, GetJurnalDetail, GetPegawai, CreatePegawai, UpdatePegawai, DeletePegawai, GetRiwayatGajiBulanan, ProsesPenggajianBulanan, GetBulanGajiTerproses, GetRekeningBank, CreateRekeningBank, UpdateRekeningBank, DeleteRekeningBank, GetSiswa, CreateSiswa, UpdateSiswa, DeleteSiswa, GenerateTagihanSPP, GetTagihanSiswa, GetTunggakanSiswa, BayarTagihanSiswa, GenerateTagihanBebasMassal, BayarBanyakTagihan, GetLaporanKonsolidasi, GenerateDataDummy, BackupDatabase, RestoreDatabase, GetDatabaseInfo } from '../wailsjs/go/main/App.js';
+  import { GetAkunKeuangan, CreateAkunKeuangan, UpdateAkunKeuangan, DeleteAkunKeuangan, ExportAkunCSV, ImportAkunCSV, GenerateISAK35, GetEntitas, CreateEntitas, GetTransaksi, CreateTransaksi, UpdateTransaksi, DeleteTransaksi, GetJurnalDetail, GetPegawai, CreatePegawai, UpdatePegawai, DeletePegawai, GetRiwayatGajiBulanan, ProsesPenggajianBulanan, GetBulanGajiTerproses, GetRekeningBank, CreateRekeningBank, UpdateRekeningBank, DeleteRekeningBank, GetSiswa, CreateSiswa, UpdateSiswa, DeleteSiswa, GenerateTagihanSPP, GetTagihanSiswa, GetTunggakanSiswa, BayarTagihanSiswa, GenerateTagihanBebasMassal, BayarBanyakTagihan, GetLaporanKonsolidasi, GenerateDataDummy, BackupDatabase, RestoreDatabase, GetDatabaseInfo, CreateTransaksiSimpel, GetLaporanJHK } from '../wailsjs/go/main/App.js';
 
   // State Manajemen Entitas
   let activeEntitas = null;
@@ -119,9 +119,10 @@
       ]
     },
     {
-      title: 'Laporan ISAK 35',
+      title: 'Laporan Keuangan',
       items: [
-        { id: 'neraca', label: 'Posisi Keuangan' },
+        { id: 'jhk', label: 'Alokasi Kas (JHK Excel)' },
+        { id: 'neraca', label: 'Posisi Keuangan (ISAK 35)' },
         { id: 'aktivitas', label: 'Penghasilan Komprehensif' },
         { id: 'aruskas', label: 'Laporan Arus Kas' }
       ]
@@ -139,6 +140,41 @@
   let editingAkun = null;
   let akunForm = { kode_akun: '', nama_akun: '', kategori: 'Aset', sifat: 'Debit', saldo: 0 };
   let fileInput;
+  let akunFilter = 'all';
+
+  $: filteredAkunList = akunList.filter(a => {
+    if (akunFilter === 'pos_dana') {
+      return ['100', '200', '300', '400', '500', '600', '700', '800', '900', '1000'].includes(a.kode_akun);
+    }
+    if (akunFilter === 'pos_belanja') {
+      const codeNum = parseInt(a.kode_akun, 10);
+      return !['100', '200', '300', '400', '500', '600', '700', '800', '900', '1000'].includes(a.kode_akun) && (codeNum >= 101 && codeNum <= 1001);
+    }
+    if (akunFilter === 'neraca') {
+      return ['Aset', 'Liabilitas', 'Aset Neto'].includes(a.kategori);
+    }
+    return true;
+  });
+
+  // --- STATE TRANSAKSI SIMPEL (PENGELUARAN / PEMASUKAN CEPAT) ---
+  let showTransaksiSimpelModal = false;
+  let isSubmittingSimpel = false;
+  let transaksiSimpelForm = {
+    jenis: 'Pengeluaran',
+    tanggal: '',
+    akun_id: '',
+    is_bank: false,
+    rekening_bank_id: '',
+    nominal: 0,
+    keterangan: '',
+    no_referensi: ''
+  };
+
+  // --- STATE LAPORAN JHK (EXCEL ALOKASI KAS) ---
+  let laporanJHKData = null;
+  let jhkBulan = 7; // Default Juli (bulan awal tahun ajaran baru)
+  let jhkTahun = 2026;
+  let isLoadingJHK = false;
 
   // --- STATE JURNAL UMUM ---
   let transaksiList = [];
@@ -822,6 +858,89 @@
     }
   }
 
+  function bukaCatatPengeluaran() {
+    transaksiSimpelForm = {
+      jenis: 'Pengeluaran',
+      tanggal: todayDate,
+      akun_id: '',
+      is_bank: false,
+      rekening_bank_id: rekeningList.length > 0 ? rekeningList[0].id : '',
+      nominal: 0,
+      keterangan: '',
+      no_referensi: ''
+    };
+    showTransaksiSimpelModal = true;
+  }
+
+  function bukaCatatPemasukan() {
+    transaksiSimpelForm = {
+      jenis: 'Pemasukan',
+      tanggal: todayDate,
+      akun_id: '',
+      is_bank: false,
+      rekening_bank_id: rekeningList.length > 0 ? rekeningList[0].id : '',
+      nominal: 0,
+      keterangan: '',
+      no_referensi: ''
+    };
+    showTransaksiSimpelModal = true;
+  }
+
+  async function handleSimpanTransaksiSimpel() {
+    if (!transaksiSimpelForm.akun_id) {
+      return showToast("Pilih akun pos keuangan terlebih dahulu!", "error");
+    }
+    if (transaksiSimpelForm.nominal <= 0) {
+      return showToast("Nominal transaksi harus lebih dari 0!", "error");
+    }
+    if (!transaksiSimpelForm.keterangan) {
+      return showToast("Keterangan transaksi harus diisi!", "error");
+    }
+    if (transaksiSimpelForm.is_bank && !transaksiSimpelForm.rekening_bank_id) {
+      return showToast("Pilih rekening bank tujuan transaksi!", "error");
+    }
+
+    try {
+      isSubmittingSimpel = true;
+      await CreateTransaksiSimpel({
+        entitas_id: activeEntitas.id,
+        jenis: transaksiSimpelForm.jenis,
+        tanggal: transaksiSimpelForm.tanggal || todayDate,
+        no_referensi: transaksiSimpelForm.no_referensi,
+        keterangan: transaksiSimpelForm.keterangan,
+        akun_id: Number(transaksiSimpelForm.akun_id),
+        is_bank: Boolean(transaksiSimpelForm.is_bank),
+        rekening_bank_id: transaksiSimpelForm.is_bank && transaksiSimpelForm.rekening_bank_id ? Number(transaksiSimpelForm.rekening_bank_id) : undefined,
+        nominal: Number(transaksiSimpelForm.nominal)
+      });
+
+      showToast(`Transaksi ${transaksiSimpelForm.jenis} berhasil dicatat!`, "success");
+      showTransaksiSimpelModal = false;
+      await loadTransaksi(activeEntitas.id);
+      await loadAkun(activeEntitas.id);
+      await loadRekening(activeEntitas.id);
+      if (currentPage === 'jhk') {
+        await fetchLaporanJHK();
+      }
+    } catch (err) {
+      showToast("Gagal menyimpan transaksi: " + err, "error");
+    } finally {
+      isSubmittingSimpel = false;
+    }
+  }
+
+  async function fetchLaporanJHK() {
+    if (!activeEntitas) return;
+    try {
+      isLoadingJHK = true;
+      laporanJHKData = await GetLaporanJHK(activeEntitas.id, Number(jhkBulan), Number(jhkTahun));
+    } catch (err) {
+      showToast("Gagal memuat Laporan JHK: " + err, "error");
+    } finally {
+      isLoadingJHK = false;
+    }
+  }
+
   function openPegawaiForm() {
     pegawaiForm = { nip: '', nama: '', jabatan: '', gaji_pokok: 0, tanggal_mulai_kerja: todayDate, periode_kenaikan: 1, nominal_kenaikan: 0, tunjangan: [], potongan: [] };
     editingPegawaiId = null;
@@ -1071,6 +1190,8 @@
                   } else if (['laporan', 'neraca', 'aktivitas', 'aruskas'].includes(currentPage)) {
                     activeLaporanTab = currentPage === 'laporan' ? 'neraca' : currentPage;
                     fetchLaporanKonsolidasi();
+                  } else if (currentPage === 'jhk') {
+                    fetchLaporanJHK();
                   } else if (currentPage === 'backup') {
                     loadDatabaseInfo();
                   }
@@ -1133,6 +1254,21 @@
             </button>
           </div>
         </div>
+        <div class="card" style="margin-bottom: 1rem; padding: 0.85rem 1.25rem; display: flex; gap: 0.6rem; align-items: center; background: #f8fafc; flex-wrap: wrap;">
+          <span style="font-size: 0.85rem; font-weight: 600; color: #475569; margin-right: 0.5rem;">Filter Tampilan:</span>
+          <button type="button" class="kledo-btn-outline" style="padding: 0.4rem 0.85rem; font-size: 0.82rem; border-radius: 8px; {akunFilter === 'all' ? 'background: #3b82f6; color: white; border-color: #3b82f6; font-weight: 600;' : 'background: white; color: #475569;'}" on:click={() => akunFilter = 'all'}>
+            Semua Akun ({akunList.length})
+          </button>
+          <button type="button" class="kledo-btn-outline" style="padding: 0.4rem 0.85rem; font-size: 0.82rem; border-radius: 8px; {akunFilter === 'pos_dana' ? 'background: #3b82f6; color: white; border-color: #3b82f6; font-weight: 600;' : 'background: white; color: #475569;'}" on:click={() => akunFilter = 'pos_dana'}>
+            🏷️ Pos Rekening Asal Dana (100 - 1000)
+          </button>
+          <button type="button" class="kledo-btn-outline" style="padding: 0.4rem 0.85rem; font-size: 0.82rem; border-radius: 8px; {akunFilter === 'pos_belanja' ? 'background: #3b82f6; color: white; border-color: #3b82f6; font-weight: 600;' : 'background: white; color: #475569;'}" on:click={() => akunFilter = 'pos_belanja'}>
+            📋 Pos Belanja / Sub-Akun (101 - 1001)
+          </button>
+          <button type="button" class="kledo-btn-outline" style="padding: 0.4rem 0.85rem; font-size: 0.82rem; border-radius: 8px; {akunFilter === 'neraca' ? 'background: #3b82f6; color: white; border-color: #3b82f6; font-weight: 600;' : 'background: white; color: #475569;'}" on:click={() => akunFilter = 'neraca'}>
+            🏛️ Akun Aset / Neraca
+          </button>
+        </div>
         <div class="card">
           <table class="data-table">
             <thead>
@@ -1146,15 +1282,19 @@
               </tr>
             </thead>
             <tbody>
-              {#if akunList.length === 0}
+              {#if filteredAkunList.length === 0}
                 <tr>
                   <td colspan="6" class="empty-state">
-                    Belum ada akun keuangan terdaftar.<br><br>
-                    <button class="btn btn-outline" on:click={handleGenerateISAK}>Buat Otomatis (Standar ISAK 35)</button>
+                    {#if akunList.length === 0}
+                      Belum ada akun keuangan terdaftar.<br><br>
+                      <button class="btn btn-outline" on:click={handleGenerateISAK}>Buat Otomatis (Standar ISAK 35 & Format Excel)</button>
+                    {:else}
+                      Tidak ada akun dalam filter kategori ini.
+                    {/if}
                   </td>
                 </tr>
               {:else}
-                {#each akunList as akun}
+                {#each filteredAkunList as akun}
                   <tr>
                     <td>{akun.kode_akun}</td>
                     <td>{akun.nama_akun}</td>
@@ -1319,12 +1459,18 @@
       {:else if currentPage === 'jurnal'}
         <div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-end;">
           <div>
-            <h1>Jurnal Umum</h1>
-            <p>Catat transaksi harian untuk {activeEntitas.nama}.</p>
+            <h1>Jurnal Umum & Transaksi</h1>
+            <p>Catat pengeluaran kas/bank, pemasukan, atau jurnal manual untuk {activeEntitas.nama}.</p>
           </div>
-          <div style="display: flex; gap: 1rem; align-items: center;">
-            <input type="text" class="kledo-input" placeholder="Cari keterangan/referensi..." bind:value={searchJurnal} style="margin: 0; min-width: 250px;" />
-            <button class="btn btn-primary" on:click={() => {
+          <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+            <input type="text" class="kledo-input" placeholder="Cari keterangan/referensi..." bind:value={searchJurnal} style="margin: 0; min-width: 200px;" />
+            <button class="btn btn-primary" style="background: #e11d48; border-color: #e11d48; display: inline-flex; align-items: center; gap: 0.4rem;" on:click={bukaCatatPengeluaran}>
+              💸 Catat Pengeluaran
+            </button>
+            <button class="btn btn-primary" style="background: #059669; border-color: #059669; display: inline-flex; align-items: center; gap: 0.4rem;" on:click={bukaCatatPemasukan}>
+              💰 Catat Pemasukan
+            </button>
+            <button class="btn btn-outline" style="display: inline-flex; align-items: center; gap: 0.4rem;" on:click={() => {
               editingJurnalId = null;
               jurnalForm = {
                 tanggal: todayDate,
@@ -1334,7 +1480,7 @@
               };
               currentPage = 'form_jurnal';
             }}>
-              <div class="css-icon-plus-small"></div> Catat Transaksi
+              ⚖️ Jurnal Manual
             </button>
           </div>
         </div>
@@ -2505,6 +2651,284 @@
               </div>
           </div>
 
+        {:else if currentPage === 'jhk'}
+          <div class="app-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; background: white; padding: 1.5rem 2rem; border-radius: 16px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);">
+            <div class="app-title">
+              <h1 style="font-size: 1.5rem; font-weight: 700; margin-bottom: 0.25rem; margin-top: 0;">Laporan Alokasi Kas & Rekening Asal Dana</h1>
+              <p style="font-size: 0.9rem; color: #64748b; margin: 0;">Format Pembukuan Excel Sekolah (Rekapitulasi Penerimaan, Pengeluaran & Sisa Saldo per Pos Dana)</p>
+            </div>
+            <div class="header-actions" style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+              <select class="kledo-input" bind:value={jhkBulan} on:change={fetchLaporanJHK} style="width: 140px; margin-bottom: 0;">
+                <option value={1}>Januari</option>
+                <option value={2}>Februari</option>
+                <option value={3}>Maret</option>
+                <option value={4}>April</option>
+                <option value={5}>Mei</option>
+                <option value={6}>Juni</option>
+                <option value={7}>Juli</option>
+                <option value={8}>Agustus</option>
+                <option value={9}>September</option>
+                <option value={10}>Oktober</option>
+                <option value={11}>November</option>
+                <option value={12}>Desember</option>
+              </select>
+              <select class="kledo-input" bind:value={jhkTahun} on:change={fetchLaporanJHK} style="width: 100px; margin-bottom: 0;">
+                <option value={2026}>2026</option>
+                <option value={2025}>2025</option>
+                <option value={2024}>2024</option>
+              </select>
+              <button class="kledo-btn-primary" on:click={() => currentPage = 'print_jhk'} title="Cetak Laporan JHK">
+                🖨️ Cetak Laporan
+              </button>
+              <button class="btn btn-primary" style="background: #e11d48; border-color: #e11d48;" on:click={bukaCatatPengeluaran}>
+                💸 Catat Belanja
+              </button>
+            </div>
+          </div>
+
+          <!-- SUMMARY CARDS -->
+          {#if laporanJHKData}
+            <div class="summary-cards" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+              <div class="card summary-card" style="border-left: 4px solid #10b981; background: white;">
+                <h3 style="font-size: 0.85rem; color: #64748b; margin-top: 0; margin-bottom: 0.5rem;">Total Penerimaan (Bulan Ini)</h3>
+                <div class="amount" style="font-size: 1.35rem; font-weight: 700; color: #10b981;">
+                  Rp {laporanJHKData.total_debet.toLocaleString('id-ID')}
+                </div>
+              </div>
+              <div class="card summary-card" style="border-left: 4px solid #ef4444; background: white;">
+                <h3 style="font-size: 0.85rem; color: #64748b; margin-top: 0; margin-bottom: 0.5rem;">Total Pengeluaran (Bulan Ini)</h3>
+                <div class="amount" style="font-size: 1.35rem; font-weight: 700; color: #ef4444;">
+                  Rp {laporanJHKData.total_kredit.toLocaleString('id-ID')}
+                </div>
+              </div>
+              <div class="card summary-card" style="border-left: 4px solid #f59e0b; background: white;">
+                <h3 style="font-size: 0.85rem; color: #64748b; margin-top: 0; margin-bottom: 0.5rem;">Balance (Surplus / Defisit)</h3>
+                <div class="amount" style="font-size: 1.35rem; font-weight: 700; color: {laporanJHKData.total_balance >= 0 ? '#10b981' : '#ef4444'};">
+                  Rp {laporanJHKData.total_balance.toLocaleString('id-ID')}
+                </div>
+              </div>
+              <div class="card summary-card" style="border-left: 4px solid #3b82f6; background: white;">
+                <h3 style="font-size: 0.85rem; color: #64748b; margin-top: 0; margin-bottom: 0.5rem;">Total Saldo Akhir Kas (Semua Pos)</h3>
+                <div class="amount" style="font-size: 1.35rem; font-weight: 700; color: #1e40af;">
+                  Rp {laporanJHKData.total_saldo_akhir.toLocaleString('id-ID')}
+                </div>
+              </div>
+            </div>
+          {/if}
+
+          <!-- TABEL LAPORAN JHK -->
+          <div class="card" style="padding: 2rem; background: white; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.04);">
+            <div class="report-title" style="text-align: center; margin-bottom: 2rem; padding-bottom: 1.5rem; border-bottom: 2px dashed #f1f5f9;">
+              <h2 style="font-size: 1.35rem; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 0.5rem;">
+                LAPORAN ARUS KEUANGAN BERDASARKAN REKENING ASAL DANA
+              </h2>
+              <p style="font-size: 1rem; color: #3b82f6; font-weight: 700; margin: 0 0 0.25rem;">
+                {activeEntitas ? activeEntitas.nama : 'Pondok Pesantren Nawawi'}
+              </p>
+              <p style="font-size: 0.9rem; color: #64748b; margin: 0;">
+                Periode: {['','Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'][jhkBulan]} {jhkTahun}
+              </p>
+            </div>
+
+            {#if isLoadingJHK}
+              <div style="padding: 3rem; text-align: center; color: #64748b;">
+                <p>Memuat Laporan JHK...</p>
+              </div>
+            {:else if !laporanJHKData || laporanJHKData.items.length === 0}
+              <div style="padding: 3rem; text-align: center; color: #64748b;">
+                Belum ada data transaksi atau pos dana untuk periode ini.<br><br>
+                <button class="kledo-btn-primary" on:click={handleGenerateISAK}>Inisialisasi Pos Akun JHK</button>
+              </div>
+            {:else}
+              <div style="overflow-x: auto;">
+                <table class="data-table" style="width: 100%; border-collapse: collapse; font-size: 0.88rem;">
+                  <thead>
+                    <tr style="background: #f8fafc; color: #334155; text-transform: uppercase; font-size: 0.78rem; letter-spacing: 0.5px;">
+                      <th style="padding: 10px; width: 40px; text-align: center;">No</th>
+                      <th style="padding: 10px; width: 90px;">Kode</th>
+                      <th style="padding: 10px;">Rekening Asal Dana</th>
+                      <th style="padding: 10px; text-align: right; color: #059669;">Debet (Masuk)</th>
+                      <th style="padding: 10px; text-align: right; color: #dc2626;">Kredit (Keluar)</th>
+                      <th style="padding: 10px; text-align: right;">Balance</th>
+                      <th style="padding: 10px; text-align: right; background: #f1f5f9;">Saldo Bulan Lalu</th>
+                      <th style="padding: 10px; text-align: right; background: #e0f2fe; color: #0369a1; font-weight: 700;">Saldo Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {#each laporanJHKData.items as item, idx}
+                      <tr style="border-bottom: 1px solid #f1f5f9; background: {idx % 2 === 0 ? 'white' : '#fafafa'};">
+                        <td style="padding: 10px; text-align: center; color: #94a3b8;">{idx + 1}</td>
+                        <td style="padding: 10px; font-weight: 600; color: #3b82f6;">{item.kode}</td>
+                        <td style="padding: 10px; font-weight: 500;">{item.nama_pos}</td>
+                        <td style="padding: 10px; text-align: right; color: {item.debet > 0 ? '#059669' : '#94a3b8'};">
+                          {item.debet > 0 ? `Rp ${item.debet.toLocaleString('id-ID')}` : '-'}
+                        </td>
+                        <td style="padding: 10px; text-align: right; color: {item.kredit > 0 ? '#dc2626' : '#94a3b8'};">
+                          {item.kredit > 0 ? `Rp ${item.kredit.toLocaleString('id-ID')}` : '-'}
+                        </td>
+                        <td style="padding: 10px; text-align: right; font-weight: 600; color: {item.balance >= 0 ? '#0f766e' : '#b91c1c'};">
+                          {item.balance !== 0 ? (item.balance < 0 ? `(Rp ${Math.abs(item.balance).toLocaleString('id-ID')})` : `Rp ${item.balance.toLocaleString('id-ID')}`) : '-'}
+                        </td>
+                        <td style="padding: 10px; text-align: right; background: {idx % 2 === 0 ? '#f8fafc' : '#f1f5f9'};">
+                          Rp {item.saldo_awal.toLocaleString('id-ID')}
+                        </td>
+                        <td style="padding: 10px; text-align: right; background: {idx % 2 === 0 ? '#f0f9ff' : '#e0f2fe'}; font-weight: 700; color: #0284c7;">
+                          Rp {item.saldo_akhir.toLocaleString('id-ID')}
+                        </td>
+                      </tr>
+                    {/each}
+                  </tbody>
+                  <tfoot>
+                    <tr style="background: #e2e8f0; font-weight: 700; font-size: 0.92rem; border-top: 2px solid #94a3b8;">
+                      <td colspan="3" style="padding: 12px 10px; text-align: center;">TOTAL JUMLAH</td>
+                      <td style="padding: 12px 10px; text-align: right; color: #059669;">
+                        Rp {laporanJHKData.total_debet.toLocaleString('id-ID')}
+                      </td>
+                      <td style="padding: 12px 10px; text-align: right; color: #dc2626;">
+                        Rp {laporanJHKData.total_kredit.toLocaleString('id-ID')}
+                      </td>
+                      <td style="padding: 12px 10px; text-align: right; color: {laporanJHKData.total_balance >= 0 ? '#0f766e' : '#b91c1c'};">
+                        Rp {laporanJHKData.total_balance.toLocaleString('id-ID')}
+                      </td>
+                      <td style="padding: 12px 10px; text-align: right; background: #cbd5e1;">
+                        Rp {laporanJHKData.total_saldo_awal.toLocaleString('id-ID')}
+                      </td>
+                      <td style="padding: 12px 10px; text-align: right; background: #bae6fd; color: #0369a1; font-size: 1rem;">
+                        Rp {laporanJHKData.total_saldo_akhir.toLocaleString('id-ID')}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+
+              <!-- PENGESAHAN LAPORAN -->
+              <div style="margin-top: 3.5rem; display: flex; justify-content: space-between; padding: 0 3rem; font-size: 0.95rem; color: #1e293b;">
+                <div style="text-align: center; width: 40%;">
+                  <p style="margin: 0 0 4.5rem;">Mengetahui,<br><strong>Kepala Sekolah</strong></p>
+                  <p style="text-decoration: underline; font-weight: 700; margin: 0;">M. Husaini, S.Pd.I.</p>
+                  <p style="margin: 4px 0 0; font-size: 0.85rem; color: #64748b;">NIP. -</p>
+                </div>
+                <div style="text-align: center; width: 40%;">
+                  <p style="margin: 0 0 4.5rem;">
+                    Palangka Raya, {new Date(jhkTahun, jhkBulan, 0).toLocaleDateString('id-ID', {day: '2-digit', month: 'long', year: 'numeric'})}<br>
+                    <strong>Bendahara Sekolah</strong>
+                  </p>
+                  <p style="text-decoration: underline; font-weight: 700; margin: 0;">R. Fajar, S.E.</p>
+                  <p style="margin: 4px 0 0; font-size: 0.85rem; color: #64748b;">NIP. -</p>
+                </div>
+              </div>
+            {/if}
+          </div>
+
+        {:else if currentPage === 'print_jhk'}
+          <div class="print-preview-container" style="max-width: 950px; margin: 0 auto; text-align: left;">
+            <!-- ACTION BAR (NO-PRINT) -->
+            <div class="no-print" style="display: flex; justify-content: space-between; align-items: center; background: #1e293b; color: white; padding: 1rem 1.5rem; border-radius: 12px; margin-bottom: 2rem; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
+              <div style="display: flex; align-items: center; gap: 1rem;">
+                <button class="kledo-btn-outline" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 0.6rem 1.2rem;" on:click={() => currentPage = 'jhk'}>
+                  ⬅ Kembali ke Laporan
+                </button>
+                <div>
+                  <h3 style="margin: 0; font-size: 1.1rem; color: white;">Pratayang Siap Cetak Laporan JHK</h3>
+                  <p style="margin: 0; font-size: 0.85rem; color: #94a3b8;">Format Standar Buku Kas Sekolah (Kertas A4 Landscape)</p>
+                </div>
+              </div>
+              <button class="btn btn-primary" style="font-size: 1rem; padding: 0.75rem 1.5rem; background: #10b981; box-shadow: 0 4px 12px rgba(16,185,129,0.3);" on:click={() => window.print()}>
+                🖨️ Cetak Sekarang ke Kertas (Ctrl+P)
+              </button>
+            </div>
+
+            <!-- PRINT PAPER AREA -->
+            <div class="print-paper" style="background: white; padding: 30px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); border-radius: 8px; font-family: 'Times New Roman', Times, serif; color: black;">
+              <div style="text-align: center; border-bottom: 3px double #000; padding-bottom: 12px; margin-bottom: 20px;">
+                <h2 style="margin: 0 0 4px; font-size: 16pt; text-transform: uppercase;">LAPORAN ARUS KEUANGAN BERDASARKAN REKENING ASAL DANA</h2>
+                <h3 style="margin: 0 0 4px; font-size: 14pt; text-transform: uppercase;">{activeEntitas ? activeEntitas.nama : 'Pondok Pesantren Nawawi'}</h3>
+                <p style="margin: 0; font-size: 11pt; font-style: italic;">
+                  Periode Bulan: {['','Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'][jhkBulan]} {jhkTahun}
+                </p>
+              </div>
+
+              {#if laporanJHKData}
+                <table style="width: 100%; border-collapse: collapse; font-size: 10pt; font-family: Arial, sans-serif;">
+                  <thead>
+                    <tr style="background: #f0f0f0;">
+                      <th style="border: 1px solid #000; padding: 6px 4px; width: 35px; text-align: center;">No</th>
+                      <th style="border: 1px solid #000; padding: 6px 4px; width: 60px; text-align: center;">Kode</th>
+                      <th style="border: 1px solid #000; padding: 6px 8px;">Rekening Asal Dana</th>
+                      <th style="border: 1px solid #000; padding: 6px 8px; text-align: right;">Debet</th>
+                      <th style="border: 1px solid #000; padding: 6px 8px; text-align: right;">Kredit</th>
+                      <th style="border: 1px solid #000; padding: 6px 8px; text-align: right;">Balance</th>
+                      <th style="border: 1px solid #000; padding: 6px 8px; text-align: right;">Saldo Bulan Lalu</th>
+                      <th style="border: 1px solid #000; padding: 6px 8px; text-align: right;">Saldo Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {#each laporanJHKData.items as item, idx}
+                      <tr>
+                        <td style="border: 1px solid #000; padding: 5px 4px; text-align: center;">{idx + 1}</td>
+                        <td style="border: 1px solid #000; padding: 5px 4px; text-align: center; font-weight: bold;">{item.kode}</td>
+                        <td style="border: 1px solid #000; padding: 5px 8px;">{item.nama_pos}</td>
+                        <td style="border: 1px solid #000; padding: 5px 8px; text-align: right;">
+                          {item.debet > 0 ? `Rp ${item.debet.toLocaleString('id-ID')}` : '-'}
+                        </td>
+                        <td style="border: 1px solid #000; padding: 5px 8px; text-align: right;">
+                          {item.kredit > 0 ? `Rp ${item.kredit.toLocaleString('id-ID')}` : '-'}
+                        </td>
+                        <td style="border: 1px solid #000; padding: 5px 8px; text-align: right;">
+                          {item.balance !== 0 ? (item.balance < 0 ? `(Rp ${Math.abs(item.balance).toLocaleString('id-ID')})` : `Rp ${item.balance.toLocaleString('id-ID')}`) : '-'}
+                        </td>
+                        <td style="border: 1px solid #000; padding: 5px 8px; text-align: right;">
+                          Rp {item.saldo_awal.toLocaleString('id-ID')}
+                        </td>
+                        <td style="border: 1px solid #000; padding: 5px 8px; text-align: right; font-weight: bold;">
+                          Rp {item.saldo_akhir.toLocaleString('id-ID')}
+                        </td>
+                      </tr>
+                    {/each}
+                  </tbody>
+                  <tfoot>
+                    <tr style="background: #e8e8e8; font-weight: bold;">
+                      <td colspan="3" style="border: 1px solid #000; padding: 7px 8px; text-align: center;">TOTAL</td>
+                      <td style="border: 1px solid #000; padding: 7px 8px; text-align: right;">
+                        Rp {laporanJHKData.total_debet.toLocaleString('id-ID')}
+                      </td>
+                      <td style="border: 1px solid #000; padding: 7px 8px; text-align: right;">
+                        Rp {laporanJHKData.total_kredit.toLocaleString('id-ID')}
+                      </td>
+                      <td style="border: 1px solid #000; padding: 7px 8px; text-align: right;">
+                        Rp {laporanJHKData.total_balance.toLocaleString('id-ID')}
+                      </td>
+                      <td style="border: 1px solid #000; padding: 7px 8px; text-align: right;">
+                        Rp {laporanJHKData.total_saldo_awal.toLocaleString('id-ID')}
+                      </td>
+                      <td style="border: 1px solid #000; padding: 7px 8px; text-align: right;">
+                        Rp {laporanJHKData.total_saldo_akhir.toLocaleString('id-ID')}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+
+                <div class="print-signature-section" style="margin-top: 40px; width: 100%; page-break-inside: avoid; font-family: Arial, sans-serif; font-size: 10pt;">
+                  <div style="display: flex; justify-content: space-between; padding: 0 30px;">
+                    <div style="text-align: center; width: 40%;">
+                      <p style="margin: 0 0 60px;">Mengetahui,<br><b>Kepala Sekolah</b></p>
+                      <p style="text-decoration: underline; font-weight: bold; margin: 0;">M. Husaini, S.Pd.I.</p>
+                      <p style="margin: 2px 0 0; font-size: 9pt;">NIP. -</p>
+                    </div>
+                    <div style="text-align: center; width: 40%;">
+                      <p style="margin: 0 0 60px;">
+                        Palangka Raya, {new Date(jhkTahun, jhkBulan, 0).toLocaleDateString('id-ID', {day: '2-digit', month: 'long', year: 'numeric'})}<br>
+                        <b>Bendahara Sekolah</b>
+                      </p>
+                      <p style="text-decoration: underline; font-weight: bold; margin: 0;">R. Fajar, S.E.</p>
+                      <p style="margin: 2px 0 0; font-size: 9pt;">NIP. -</p>
+                    </div>
+                  </div>
+                </div>
+              {/if}
+            </div>
+          </div>
+
         {:else if currentPage === 'backup'}
           <div class="page-header" style="text-align: left;">
             <h1>Cadangkan & Pulihkan Database</h1>
@@ -2618,6 +3042,150 @@
       <div class="form-actions-kledo confirm-actions">
         <button class="kledo-btn-primary" style="background-color: #ef4444;" on:click={confirmModal.onConfirm}>Ya, Lanjutkan</button>
         <button class="kledo-btn-outline" on:click={confirmModal.onCancel}>Batal</button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- MODAL TRANSAKSI SIMPEL (PENGELUARAN / PEMASUKAN CEPAT) -->
+{#if showTransaksiSimpelModal}
+  <div class="modal-overlay" on:click|self={() => showTransaksiSimpelModal = false}>
+    <div class="modal-content" style="max-width: 580px; width: 95%; max-height: 90vh; overflow-y: auto; text-align: left;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.75rem;">
+        <div>
+          <h2 style="margin: 0; font-size: 1.35rem; color: {transaksiSimpelForm.jenis === 'Pengeluaran' ? '#e11d48' : '#059669'};">
+            {transaksiSimpelForm.jenis === 'Pengeluaran' ? '💸 Catat Pengeluaran Baru' : '💰 Catat Pemasukan Baru'}
+          </h2>
+          <p style="margin: 0.25rem 0 0; font-size: 0.85rem; color: #64748b;">
+            {transaksiSimpelForm.jenis === 'Pengeluaran' ? 'Catat belanja operasional kas atau via rekening bank' : 'Catat penerimaan pos dana atau setoran bank'}
+          </p>
+        </div>
+        <button class="btn-icon" on:click={() => showTransaksiSimpelModal = false} style="font-size: 1.25rem; cursor: pointer; border: none; background: none;">✕</button>
+      </div>
+
+      <div class="form-group">
+        <label style="font-weight: 600; font-size: 0.875rem; color: #334155;">Tanggal Transaksi *</label>
+        <input type="date" class="kledo-input" bind:value={transaksiSimpelForm.tanggal} />
+      </div>
+
+      <div class="form-group">
+        <label style="font-weight: 600; font-size: 0.875rem; color: #334155;">
+          {transaksiSimpelForm.jenis === 'Pengeluaran' ? 'Pos Belanja / Akun Beban *' : 'Pos Asal Dana / Akun Pendapatan *'}
+        </label>
+        <select class="kledo-input" bind:value={transaksiSimpelForm.akun_id}>
+          <option value="">-- Pilih Akun / Pos Keuangan --</option>
+          {#if transaksiSimpelForm.jenis === 'Pengeluaran'}
+            <optgroup label="📋 Pos Belanja (Sub-Akun Excel 101 - 1001)">
+              {#each akunList.filter(a => {
+                const c = parseInt(a.kode_akun, 10);
+                return !['100','200','300','400','500','600','700','800','900','1000'].includes(a.kode_akun) && (c >= 101 && c <= 1001);
+              }) as akun}
+                <option value={akun.id}>{akun.kode_akun} - {akun.nama_akun}</option>
+              {/each}
+            </optgroup>
+            <optgroup label="📁 Pos Asal Dana / Pos Induk (100 - 1000)">
+              {#each akunList.filter(a => ['100','200','300','400','500','600','700','800','900','1000'].includes(a.kode_akun)) as akun}
+                <option value={akun.id}>{akun.kode_akun} - {akun.nama_akun}</option>
+              {/each}
+            </optgroup>
+            <optgroup label="🏛️ Beban Operasional Lainnya">
+              {#each akunList.filter(a => a.kategori === 'Beban' && parseInt(a.kode_akun, 10) > 1001) as akun}
+                <option value={akun.id}>{akun.kode_akun} - {akun.nama_akun}</option>
+              {/each}
+            </optgroup>
+          {:else}
+            <optgroup label="🏷️ Pos Rekening Asal Dana (100 - 1000)">
+              {#each akunList.filter(a => ['100','200','300','400','500','600','700','800','900','1000'].includes(a.kode_akun)) as akun}
+                <option value={akun.id}>{akun.kode_akun} - {akun.nama_akun}</option>
+              {/each}
+            </optgroup>
+            <optgroup label="🏛️ Akun Pendapatan Lainnya">
+              {#each akunList.filter(a => a.kategori === 'Pendapatan' && !['100','200','300','400','500','600','700','800','900','1000'].includes(a.kode_akun)) as akun}
+                <option value={akun.id}>{akun.kode_akun} - {akun.nama_akun}</option>
+              {/each}
+            </optgroup>
+          {/if}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label style="font-weight: 600; font-size: 0.875rem; color: #334155;">Aliran Kas / Rekening Pembayaran *</label>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-top: 0.25rem;">
+          <div 
+            style="padding: 0.75rem 1rem; border-radius: 8px; border: 2px solid {!transaksiSimpelForm.is_bank ? '#3b82f6' : '#e2e8f0'}; background: {!transaksiSimpelForm.is_bank ? '#eff6ff' : 'white'}; cursor: pointer; transition: all 0.2s;"
+            on:click={() => { transaksiSimpelForm.is_bank = false; transaksiSimpelForm.rekening_bank_id = ''; }}>
+            <div style="font-weight: 600; font-size: 0.95rem; color: {!transaksiSimpelForm.is_bank ? '#1d4ed8' : '#334155'};">
+              💵 Kas Tunai
+            </div>
+            <div style="font-size: 0.78rem; color: #64748b; margin-top: 3px;">
+              Langsung ke pos kas (tanpa mempengaruhi saldo rekening bank)
+            </div>
+          </div>
+          <div 
+            style="padding: 0.75rem 1rem; border-radius: 8px; border: 2px solid {transaksiSimpelForm.is_bank ? '#3b82f6' : '#e2e8f0'}; background: {transaksiSimpelForm.is_bank ? '#eff6ff' : 'white'}; cursor: pointer; transition: all 0.2s;"
+            on:click={() => { 
+              transaksiSimpelForm.is_bank = true; 
+              if (rekeningList.length > 0 && !transaksiSimpelForm.rekening_bank_id) {
+                transaksiSimpelForm.rekening_bank_id = rekeningList[0].id;
+              }
+            }}>
+            <div style="font-weight: 600; font-size: 0.95rem; color: {transaksiSimpelForm.is_bank ? '#1d4ed8' : '#334155'};">
+              🏦 Rekening Bank
+            </div>
+            <div style="font-size: 0.78rem; color: #64748b; margin-top: 3px;">
+              {transaksiSimpelForm.jenis === 'Pengeluaran' ? 'Memotong saldo buku bank riil' : 'Menambah saldo buku bank riil'}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {#if transaksiSimpelForm.is_bank}
+        <div class="form-group" style="background: #f8fafc; padding: 0.85rem 1rem; border-radius: 8px; border: 1px dashed #cbd5e1; margin-bottom: 1rem;">
+          <label style="font-weight: 600; font-size: 0.875rem; color: #334155;">Pilih Rekening Bank Sumber/Tujuan *</label>
+          <select class="kledo-input" bind:value={transaksiSimpelForm.rekening_bank_id} style="margin-bottom: 0;">
+            <option value="">-- Pilih Rekening Bank --</option>
+            {#each rekeningList as rek}
+              <option value={rek.id}>{rek.nama_rekening} ({rek.nomor_rekening || 'No-Rek'}) - Saldo: Rp {rek.saldo.toLocaleString('id-ID')}</option>
+            {/each}
+          </select>
+          {#if rekeningList.length === 0}
+            <small style="color: #ef4444; display: block; margin-top: 0.35rem;">Belum ada rekening bank yang terdaftar di menu Rekening Bank.</small>
+          {/if}
+        </div>
+      {/if}
+
+      <div class="form-group">
+        <label style="font-weight: 600; font-size: 0.875rem; color: #334155;">Jumlah / Nominal (Rp) *</label>
+        <input type="number" class="kledo-input" bind:value={transaksiSimpelForm.nominal} placeholder="Contoh: 250000" min="1" />
+        {#if transaksiSimpelForm.nominal > 0}
+          <small style="color: #059669; font-weight: 600; display: block; margin-top: 0.25rem;">
+            Terbaca: Rp {Number(transaksiSimpelForm.nominal).toLocaleString('id-ID')}
+          </small>
+        {/if}
+      </div>
+
+      <div class="form-group">
+        <label style="font-weight: 600; font-size: 0.875rem; color: #334155;">Keterangan / Uraian Transaksi *</label>
+        <input type="text" class="kledo-input" bind:value={transaksiSimpelForm.keterangan} placeholder="Misal: Pembelian perlengkapan kebersihan santri" />
+      </div>
+
+      <div class="form-group">
+        <label style="font-weight: 600; font-size: 0.875rem; color: #334155;">Nomor Bukti / Kwitansi / Referensi (Opsional)</label>
+        <input type="text" class="kledo-input" bind:value={transaksiSimpelForm.no_referensi} placeholder="Misal: BKK-01/07/2026 atau No Nota Toko" />
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.75rem; border-top: 1px solid #e2e8f0; padding-top: 1rem;">
+        <button type="button" class="kledo-btn-outline" on:click={() => showTransaksiSimpelModal = false} disabled={isSubmittingSimpel}>
+          Batal
+        </button>
+        <button 
+          type="button" 
+          class="btn btn-primary" 
+          style="background: {transaksiSimpelForm.jenis === 'Pengeluaran' ? '#e11d48' : '#059669'}; border-color: {transaksiSimpelForm.jenis === 'Pengeluaran' ? '#e11d48' : '#059669'}; font-weight: 600;" 
+          on:click={handleSimpanTransaksiSimpel}
+          disabled={isSubmittingSimpel}>
+          {isSubmittingSimpel ? 'Menyimpan...' : `💾 Simpan ${transaksiSimpelForm.jenis}`}
+        </button>
       </div>
     </div>
   </div>

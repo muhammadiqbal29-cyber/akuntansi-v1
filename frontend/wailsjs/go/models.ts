@@ -644,5 +644,108 @@ export namespace models {
 		}
 	}
 
+	export class TransaksiSimpelInput {
+	    entitas_id: number;
+	    jenis: string;
+	    tanggal: string;
+	    no_referensi: string;
+	    keterangan: string;
+	    akun_id: number;
+	    is_bank: boolean;
+	    rekening_bank_id?: number;
+	    nominal: number;
+
+	    static createFrom(source: any = {}) {
+	        return new TransaksiSimpelInput(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.entitas_id = source["entitas_id"];
+	        this.jenis = source["jenis"];
+	        this.tanggal = source["tanggal"];
+	        this.no_referensi = source["no_referensi"];
+	        this.keterangan = source["keterangan"];
+	        this.akun_id = source["akun_id"];
+	        this.is_bank = source["is_bank"];
+	        this.rekening_bank_id = source["rekening_bank_id"];
+	        this.nominal = source["nominal"];
+	    }
+	}
+
+	export class LaporanJHKItem {
+	    kode: string;
+	    nama_pos: string;
+	    saldo_awal: number;
+	    debet: number;
+	    kredit: number;
+	    balance: number;
+	    saldo_akhir: number;
+
+	    static createFrom(source: any = {}) {
+	        return new LaporanJHKItem(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kode = source["kode"];
+	        this.nama_pos = source["nama_pos"];
+	        this.saldo_awal = source["saldo_awal"];
+	        this.debet = source["debet"];
+	        this.kredit = source["kredit"];
+	        this.balance = source["balance"];
+	        this.saldo_akhir = source["saldo_akhir"];
+	    }
+	}
+
+	export class LaporanJHKResponse {
+	    entitas_name: string;
+	    bulan: number;
+	    tahun: number;
+	    periode_nama: string;
+	    items: LaporanJHKItem[];
+	    total_saldo_awal: number;
+	    total_debet: number;
+	    total_kredit: number;
+	    total_balance: number;
+	    total_saldo_akhir: number;
+
+	    static createFrom(source: any = {}) {
+	        return new LaporanJHKResponse(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.entitas_name = source["entitas_name"];
+	        this.bulan = source["bulan"];
+	        this.tahun = source["tahun"];
+	        this.periode_nama = source["periode_nama"];
+	        this.items = this.convertValues(source["items"], LaporanJHKItem);
+	        this.total_saldo_awal = source["total_saldo_awal"];
+	        this.total_debet = source["total_debet"];
+	        this.total_kredit = source["total_kredit"];
+	        this.total_balance = source["total_balance"];
+	        this.total_saldo_akhir = source["total_saldo_akhir"];
+	    }
+
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
 }
 

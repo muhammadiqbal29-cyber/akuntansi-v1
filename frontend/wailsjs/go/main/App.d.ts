@@ -82,3 +82,8 @@ export function UpdateRekeningBank(arg1:models.RekeningBank):Promise<models.Reke
 export function UpdateSiswa(arg1:models.Siswa):Promise<models.Siswa>;
 
 export function UpdateTransaksi(arg1:number,arg2:main.TransaksiInput):Promise<void>;
+
+export function CreateTransaksiSimpel(arg1:models.TransaksiSimpelInput):Promise<void>;
+
+export function GetLaporanJHK(arg1:number,arg2:number,arg3:number):Promise<models.LaporanJHKResponse>;
+

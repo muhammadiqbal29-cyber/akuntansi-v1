@@ -447,43 +447,100 @@ func (a *App) ImportAkunCSV(entitasID int, csvData string) error {
 	return nil
 }
 
-// Generate ISAK 35 Template
+// GenerateISAK35 Template
 func (a *App) GenerateISAK35(entitasID int) error {
-	// Template standar ISAK 35 (Disesuaikan dengan Pos Anggaran Yayasan)
+	// Template standar Bagan Akun Operasional Sekolah (mengadopsi Excel JHK & ISAK 35)
 	akunTemplate := []models.AkunKeuangan{
-		// Aset (1)
-		{KodeAkun: "1111", NamaAkun: "Kas Tunai", Kategori: "Aset", Sifat: "Debit"},
-		// (Kode 1110 "Bank" sudah otomatis dibuat oleh sistem)
+		// Aset & Akun Bawaan Sistem
+		{KodeAkun: "1100", NamaAkun: "Kas Operasional", Kategori: "Aset", Sifat: "Debit", IsBawaan: true},
+		{KodeAkun: "1110", NamaAkun: "Bank", Kategori: "Aset", Sifat: "Debit", IsBawaan: true},
 		{KodeAkun: "1130", NamaAkun: "Piutang Usaha/SPP", Kategori: "Aset", Sifat: "Debit"},
 		{KodeAkun: "1140", NamaAkun: "Persediaan (Seragam/Buku)", Kategori: "Aset", Sifat: "Debit"},
-		// Liabilitas (2)
+		// Liabilitas
 		{KodeAkun: "2110", NamaAkun: "Utang Usaha", Kategori: "Liabilitas", Sifat: "Kredit"},
 		{KodeAkun: "2120", NamaAkun: "Utang Gaji", Kategori: "Liabilitas", Sifat: "Kredit"},
-		// Aset Neto (3)
+		// Aset Neto ISAK 35
 		{KodeAkun: "3110", NamaAkun: "Aset Neto Tanpa Pembatasan", Kategori: "Aset Neto", Sifat: "Kredit"},
 		{KodeAkun: "3120", NamaAkun: "Aset Neto Dengan Pembatasan", Kategori: "Aset Neto", Sifat: "Kredit"},
-		// Pendapatan (4) - Harus persis dengan format jenis tagihan
-		{KodeAkun: "4110", NamaAkun: "Pendapatan SPP", Kategori: "Pendapatan", Sifat: "Kredit"},
-		{KodeAkun: "4120", NamaAkun: "Pendapatan Semesteran", Kategori: "Pendapatan", Sifat: "Kredit"},
-		{KodeAkun: "4130", NamaAkun: "Pendapatan Seragam", Kategori: "Pendapatan", Sifat: "Kredit"},
-		{KodeAkun: "4140", NamaAkun: "Pendapatan Buku", Kategori: "Pendapatan", Sifat: "Kredit"},
-		{KodeAkun: "4150", NamaAkun: "Pendapatan Uang Pangkal", Kategori: "Pendapatan", Sifat: "Kredit"},
-		{KodeAkun: "4160", NamaAkun: "Pendapatan Asrama", Kategori: "Pendapatan", Sifat: "Kredit"},
-		{KodeAkun: "4170", NamaAkun: "Pendapatan Infaq", Kategori: "Pendapatan", Sifat: "Kredit"},
-		{KodeAkun: "4180", NamaAkun: "Pendapatan Koperasi", Kategori: "Pendapatan", Sifat: "Kredit"},
-		{KodeAkun: "4190", NamaAkun: "Pendapatan Bantuan Operasional (BOS)", Kategori: "Pendapatan", Sifat: "Kredit"},
-		// Beban (5)
-		{KodeAkun: "5110", NamaAkun: "Beban Gaji, THR & Insentif Guru", Kategori: "Beban", Sifat: "Debit"},
-		{KodeAkun: "5120", NamaAkun: "Beban Konsumsi & Makan Siswa", Kategori: "Beban", Sifat: "Debit"},
-		{KodeAkun: "5130", NamaAkun: "Beban Kegiatan & Ujian Siswa", Kategori: "Beban", Sifat: "Debit"},
-		{KodeAkun: "5140", NamaAkun: "Beban Kesehatan & Pengobatan Siswa", Kategori: "Beban", Sifat: "Debit"},
-		{KodeAkun: "5150", NamaAkun: "Beban Pengadaan Seragam", Kategori: "Beban", Sifat: "Debit"},
-		{KodeAkun: "5160", NamaAkun: "Beban Pengadaan Buku", Kategori: "Beban", Sifat: "Debit"},
-		{KodeAkun: "5170", NamaAkun: "Beban Pembangunan & Sarpras", Kategori: "Beban", Sifat: "Debit"},
-		{KodeAkun: "5180", NamaAkun: "Beban Perlengkapan Asrama (Ranjang, Kasur)", Kategori: "Beban", Sifat: "Debit"},
-		{KodeAkun: "5190", NamaAkun: "Beban Utilitas (Listrik, Air, Internet)", Kategori: "Beban", Sifat: "Debit"},
-		{KodeAkun: "5200", NamaAkun: "Beban Pemeliharaan & Alat Kebersihan", Kategori: "Beban", Sifat: "Debit"},
-		{KodeAkun: "5210", NamaAkun: "Beban Operasional (Transport, ATK, Fotocopy)", Kategori: "Beban", Sifat: "Debit"},
+
+		// --- BAGAN AKUN STANDAR OPERASIONAL SEKOLAH (EXCEL JHK) ---
+		// Pos 100: SPP & Rincian Belanja SPP
+		{KodeAkun: "100", NamaAkun: "SPP", Kategori: "Pendapatan", Sifat: "Kredit"},
+		{KodeAkun: "101", NamaAkun: "GAJI GURU DAN KARYAWAN", Kategori: "Beban", Sifat: "Debit"},
+		{KodeAkun: "102", NamaAkun: "THR", Kategori: "Beban", Sifat: "Debit"},
+		{KodeAkun: "103", NamaAkun: "INSENTIF", Kategori: "Beban", Sifat: "Debit"},
+		{KodeAkun: "104", NamaAkun: "MAKAN DAN MINUM SISWA", Kategori: "Beban", Sifat: "Debit"},
+		{KodeAkun: "105", NamaAkun: "KONSUMSI GURU/TAMU", Kategori: "Beban", Sifat: "Debit"},
+		{KodeAkun: "106", NamaAkun: "PERALATAN MAKAN", Kategori: "Beban", Sifat: "Debit"},
+		{KodeAkun: "107", NamaAkun: "SABUN CUCI PIRING", Kategori: "Beban", Sifat: "Debit"},
+		{KodeAkun: "108", NamaAkun: "LAIN-LAIN (SPP)", Kategori: "Beban", Sifat: "Debit"},
+
+		// Pos 200: SEMESTERAN & Rincian Belanja Semesteran
+		{KodeAkun: "200", NamaAkun: "SEMESTERAN", Kategori: "Pendapatan", Sifat: "Kredit"},
+		{KodeAkun: "201", NamaAkun: "KEGIATAN SISWA", Kategori: "Beban", Sifat: "Debit"},
+		{KodeAkun: "202", NamaAkun: "KEGIATAN GURU", Kategori: "Beban", Sifat: "Debit"},
+		{KodeAkun: "203", NamaAkun: "KEGIATAN POMG", Kategori: "Beban", Sifat: "Debit"},
+		{KodeAkun: "204", NamaAkun: "UJIAN SISWA", Kategori: "Beban", Sifat: "Debit"},
+		{KodeAkun: "205", NamaAkun: "HADIAH UNTUK SISWA", Kategori: "Beban", Sifat: "Debit"},
+		{KodeAkun: "206", NamaAkun: "BIAYA BEROBAT SISWA", Kategori: "Beban", Sifat: "Debit"},
+		{KodeAkun: "207", NamaAkun: "OBAT2AN SISWA", Kategori: "Beban", Sifat: "Debit"},
+		{KodeAkun: "208", NamaAkun: "ALAT OLAHRAGA", Kategori: "Beban", Sifat: "Debit"},
+		{KodeAkun: "209", NamaAkun: "LAIN-LAIN (SEMESTERAN)", Kategori: "Beban", Sifat: "Debit"},
+
+		// Pos 300: SERAGAM & Rincian Belanja Seragam
+		{KodeAkun: "300", NamaAkun: "SERAGAM", Kategori: "Pendapatan", Sifat: "Kredit"},
+		{KodeAkun: "301", NamaAkun: "SERAGAM SISWA", Kategori: "Beban", Sifat: "Debit"},
+		{KodeAkun: "302", NamaAkun: "ATRIBUT SERAGAM", Kategori: "Beban", Sifat: "Debit"},
+		{KodeAkun: "303", NamaAkun: "SERAGAM GURU", Kategori: "Beban", Sifat: "Debit"},
+
+		// Pos 400: BUKU & Rincian Belanja Buku
+		{KodeAkun: "400", NamaAkun: "BUKU", Kategori: "Pendapatan", Sifat: "Kredit"},
+		{KodeAkun: "401", NamaAkun: "BUKU SISWA", Kategori: "Beban", Sifat: "Debit"},
+		{KodeAkun: "402", NamaAkun: "BUKU PERPUSTAKAAN", Kategori: "Beban", Sifat: "Debit"},
+		{KodeAkun: "403", NamaAkun: "BUKU GURU/LAIN-LAIN", Kategori: "Beban", Sifat: "Debit"},
+
+		// Pos 500: SARPRAS & Rincian Belanja Sarpras
+		{KodeAkun: "500", NamaAkun: "SARPRAS", Kategori: "Pendapatan", Sifat: "Kredit"},
+		{KodeAkun: "501", NamaAkun: "PEMBUATAN RUANG", Kategori: "Beban", Sifat: "Debit"},
+		{KodeAkun: "502", NamaAkun: "PERBAIKAN RUANG", Kategori: "Beban", Sifat: "Debit"},
+		{KodeAkun: "503", NamaAkun: "INSTALASI LISTRIK", Kategori: "Beban", Sifat: "Debit"},
+		{KodeAkun: "504", NamaAkun: "INSTALASI AIR", Kategori: "Beban", Sifat: "Debit"},
+		{KodeAkun: "505", NamaAkun: "INVENTARIS LEMBAGA", Kategori: "Beban", Sifat: "Debit"},
+		{KodeAkun: "506", NamaAkun: "LAPTOP/PC, PRINTER", Kategori: "Beban", Sifat: "Debit"},
+		{KodeAkun: "507", NamaAkun: "LAIN-LAIN (SARPRAS)", Kategori: "Beban", Sifat: "Debit"},
+
+		// Pos 600: ASRAMA & Rincian Belanja Asrama
+		{KodeAkun: "600", NamaAkun: "ASRAMA", Kategori: "Pendapatan", Sifat: "Kredit"},
+		{KodeAkun: "601", NamaAkun: "KASUR, SPREI, BANTAL", Kategori: "Beban", Sifat: "Debit"},
+		{KodeAkun: "602", NamaAkun: "LAIN-LAIN (ASRAMA)", Kategori: "Beban", Sifat: "Debit"},
+		{KodeAkun: "603", NamaAkun: "PERLENGKAPAN ASRAMA / RANJANG", Kategori: "Beban", Sifat: "Debit"},
+
+		// Pos 700: INFAQ & Rincian Penggunaan Infaq
+		{KodeAkun: "700", NamaAkun: "INFAQ", Kategori: "Pendapatan", Sifat: "Kredit"},
+		{KodeAkun: "701", NamaAkun: "SPP SISWA (BEASISWA)", Kategori: "Beban", Sifat: "Debit"},
+		{KodeAkun: "702", NamaAkun: "LAIN-LAIN (INFAQ)", Kategori: "Beban", Sifat: "Debit"},
+
+		// Pos 800: OPERASIONAL & Rincian Belanja Operasional
+		{KodeAkun: "800", NamaAkun: "OPERASIONAL", Kategori: "Pendapatan", Sifat: "Kredit"},
+		{KodeAkun: "801", NamaAkun: "BIAYA LISTRIK", Kategori: "Beban", Sifat: "Debit"},
+		{KodeAkun: "802", NamaAkun: "BIAYA INTERNET / PULSA HP", Kategori: "Beban", Sifat: "Debit"},
+		{KodeAkun: "803", NamaAkun: "TRANSPORT", Kategori: "Beban", Sifat: "Debit"},
+		{KodeAkun: "804", NamaAkun: "ATK", Kategori: "Beban", Sifat: "Debit"},
+		{KodeAkun: "805", NamaAkun: "PEMELIHARAAN ASET", Kategori: "Beban", Sifat: "Debit"},
+		{KodeAkun: "806", NamaAkun: "FOTO COPY", Kategori: "Beban", Sifat: "Debit"},
+		{KodeAkun: "807", NamaAkun: "RETRIBUSI SAMPAH", Kategori: "Beban", Sifat: "Debit"},
+		{KodeAkun: "808", NamaAkun: "JASA SEDOT WC, DLL", Kategori: "Beban", Sifat: "Debit"},
+		{KodeAkun: "809", NamaAkun: "KEBERSIHAN (SABUN, SAPU, DLL)", Kategori: "Beban", Sifat: "Debit"},
+		{KodeAkun: "810", NamaAkun: "LAIN-LAIN (OPERASIONAL)", Kategori: "Beban", Sifat: "Debit"},
+		{KodeAkun: "811", NamaAkun: "IURAN RUTIN (MKKS)", Kategori: "Beban", Sifat: "Debit"},
+
+		// Pos 900: PPDB
+		{KodeAkun: "900", NamaAkun: "PENDAFTARAN PPDB", Kategori: "Pendapatan", Sifat: "Kredit"},
+		{KodeAkun: "901", NamaAkun: "KEPERLUAN PPDB", Kategori: "Beban", Sifat: "Debit"},
+
+		// Pos 1000: DANA BOS
+		{KodeAkun: "1000", NamaAkun: "DANA BOS", Kategori: "Pendapatan", Sifat: "Kredit"},
+		{KodeAkun: "1001", NamaAkun: "PENGELUARAN DANA BOS", Kategori: "Beban", Sifat: "Debit"},
 	}
 
 	for _, akun := range akunTemplate {
@@ -579,6 +636,189 @@ func (a *App) CreateTransaksi(input TransaksiInput) error {
 	}
 
 	// 3. Sukses, commit semua perubahan
+	return tx.Commit().Error
+}
+
+// CreateTransaksiSimpel mencatat pengeluaran atau pemasukan secara langsung (ala Excel)
+// dengan opsi pembayaran Tunai (tanpa potong bank) atau Bank (potong/tambah saldo bank).
+func (a *App) CreateTransaksiSimpel(input models.TransaksiSimpelInput) error {
+	if input.EntitasID <= 0 {
+		return fmt.Errorf("Entitas belum dipilih")
+	}
+	if input.Nominal <= 0 {
+		return fmt.Errorf("Nominal transaksi harus lebih dari 0")
+	}
+	if input.AkunID <= 0 {
+		return fmt.Errorf("Akun pos keuangan harus dipilih")
+	}
+	if input.Tanggal == "" {
+		input.Tanggal = time.Now().Format("2006-01-02")
+	}
+	if input.IsBank && (input.RekeningBankID == nil || *input.RekeningBankID <= 0) {
+		return fmt.Errorf("Pilih Rekening Bank tujuan pembayaran")
+	}
+
+	tx := database.DB.Begin()
+	if tx.Error != nil {
+		return tx.Error
+	}
+
+	// 1. Ambil Akun Utama (Beban jika Pengeluaran, Pendapatan jika Pemasukan)
+	var akunUtama models.AkunKeuangan
+	if err := tx.First(&akunUtama, input.AkunID).Error; err != nil {
+		tx.Rollback()
+		return fmt.Errorf("Akun pos keuangan tidak ditemukan: %v", err)
+	}
+
+	// 2. Ambil Akun Pasangan (Bank atau Kas Operasional)
+	var akunPasangan models.AkunKeuangan
+	var rekBank models.RekeningBank
+
+	if input.IsBank {
+		// Cari akun Bank
+		err := tx.Where("entitas_id = ? AND (is_bawaan = true OR kode_akun = '1110' OR nama_akun LIKE '%Bank%')", input.EntitasID).First(&akunPasangan).Error
+		if err != nil {
+			akunPasangan = models.AkunKeuangan{
+				EntitasID: input.EntitasID,
+				KodeAkun:  "1110",
+				NamaAkun:  "Bank",
+				Kategori:  "Aset",
+				Sifat:     "Debit",
+				IsBawaan:  true,
+			}
+			if err := tx.Create(&akunPasangan).Error; err != nil {
+				tx.Rollback()
+				return fmt.Errorf("Gagal menyiapkan akun Bank: %v", err)
+			}
+		}
+
+		if err := tx.First(&rekBank, *input.RekeningBankID).Error; err != nil {
+			tx.Rollback()
+			return fmt.Errorf("Rekening Bank tidak ditemukan: %v", err)
+		}
+	} else {
+		// Transaksi Tunai: gunakan akun Kas Operasional (tanpa melibatkan saldo bank)
+		err := tx.Where("entitas_id = ? AND (kode_akun = '1100' OR kode_akun = '1111' OR nama_akun LIKE '%Kas%')", input.EntitasID).First(&akunPasangan).Error
+		if err != nil {
+			akunPasangan = models.AkunKeuangan{
+				EntitasID: input.EntitasID,
+				KodeAkun:  "1100",
+				NamaAkun:  "Kas Operasional",
+				Kategori:  "Aset",
+				Sifat:     "Debit",
+				IsBawaan:  true,
+			}
+			if err := tx.Create(&akunPasangan).Error; err != nil {
+				tx.Rollback()
+				return fmt.Errorf("Gagal menyiapkan akun Kas Operasional: %v", err)
+			}
+		}
+	}
+
+	// 3. Simpan Header Transaksi
+	noRef := strings.TrimSpace(input.NoReferensi)
+	if noRef == "" {
+		prefix := "OUT"
+		if input.Jenis == "Pemasukan" {
+			prefix = "IN"
+		}
+		noRef = fmt.Sprintf("%s-%s-%04d", prefix, time.Now().Format("060102"), time.Now().Unix()%10000)
+	}
+
+	transaksi := models.Transaksi{
+		EntitasID:   input.EntitasID,
+		Tanggal:     input.Tanggal,
+		NoReferensi: noRef,
+		Keterangan:  input.Keterangan,
+		TotalDebit:  input.Nominal,
+		TotalKredit: input.Nominal,
+	}
+
+	if err := tx.Create(&transaksi).Error; err != nil {
+		tx.Rollback()
+		return fmt.Errorf("Gagal membuat transaksi: %v", err)
+	}
+
+	// 4. Detail Jurnal dan Pembaruan Saldo
+	if input.Jenis == "Pengeluaran" {
+		// Debit: Akun Beban / Belanja
+		detDebit := models.JurnalDetail{
+			TransaksiID: transaksi.ID,
+			AkunID:      akunUtama.ID,
+			Debit:       input.Nominal,
+			Kredit:      0,
+		}
+		if err := tx.Create(&detDebit).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+		if strings.EqualFold(akunUtama.Sifat, "Debit") {
+			akunUtama.Saldo += input.Nominal
+		} else {
+			akunUtama.Saldo -= input.Nominal
+		}
+		tx.Save(&akunUtama)
+
+		// Kredit: Akun Bank atau Kas
+		detKredit := models.JurnalDetail{
+			TransaksiID:    transaksi.ID,
+			AkunID:         akunPasangan.ID,
+			RekeningBankID: input.RekeningBankID,
+			Debit:          0,
+			Kredit:         input.Nominal,
+		}
+		if err := tx.Create(&detKredit).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+		akunPasangan.Saldo -= input.Nominal
+		tx.Save(&akunPasangan)
+
+		if input.IsBank && input.RekeningBankID != nil {
+			rekBank.Saldo -= input.Nominal
+			tx.Save(&rekBank)
+		}
+	} else {
+		// Pemasukan
+		// Debit: Akun Bank atau Kas
+		detDebit := models.JurnalDetail{
+			TransaksiID:    transaksi.ID,
+			AkunID:         akunPasangan.ID,
+			RekeningBankID: input.RekeningBankID,
+			Debit:          input.Nominal,
+			Kredit:         0,
+		}
+		if err := tx.Create(&detDebit).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+		akunPasangan.Saldo += input.Nominal
+		tx.Save(&akunPasangan)
+
+		if input.IsBank && input.RekeningBankID != nil {
+			rekBank.Saldo += input.Nominal
+			tx.Save(&rekBank)
+		}
+
+		// Kredit: Akun Pendapatan
+		detKredit := models.JurnalDetail{
+			TransaksiID: transaksi.ID,
+			AkunID:      akunUtama.ID,
+			Debit:       0,
+			Kredit:      input.Nominal,
+		}
+		if err := tx.Create(&detKredit).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+		if strings.EqualFold(akunUtama.Sifat, "Kredit") {
+			akunUtama.Saldo += input.Nominal
+		} else {
+			akunUtama.Saldo -= input.Nominal
+		}
+		tx.Save(&akunUtama)
+	}
+
 	return tx.Commit().Error
 }
 
@@ -1220,7 +1460,7 @@ func (a *App) GetLaporanKonsolidasi(mode string, periode int, tahun int, entitas
 
 			switch akun.Kategori {
 			case "Aset":
-				if akun.KodeAkun == "1110" || akun.KodeAkun == "1111" {
+				if akun.KodeAkun == "1110" || akun.KodeAkun == "1111" || akun.KodeAkun == "1100" {
 					itemKas.Values[entitas.Nama] += saldo
 				} else if akun.KodeAkun == "1130" {
 					itemPiutang.Values[entitas.Nama] += saldo
@@ -1236,16 +1476,17 @@ func (a *App) GetLaporanKonsolidasi(mode string, periode int, tahun int, entitas
 					itemNetoTB.Values[entitas.Nama] += saldo
 				}
 			case "Pendapatan":
-				if akun.KodeAkun == "4110" || akun.KodeAkun == "4150" {
+				kd := akun.KodeAkun
+				if kd == "4110" || kd == "4150" || kd == "100" || kd == "200" || kd == "500" || kd == "900" {
 					itemSpp.Values[entitas.Nama] += saldo
 					itemKasSpp.Values[entitas.Nama] += saldo
-				} else if akun.KodeAkun == "4160" {
+				} else if kd == "4160" || kd == "600" {
 					itemPendLain.Values[entitas.Nama] += saldo
 					itemKasSpp.Values[entitas.Nama] += saldo
-				} else if akun.KodeAkun == "4190" {
+				} else if kd == "4190" || kd == "1000" {
 					itemBos.Values[entitas.Nama] += saldo
 					itemKasBos.Values[entitas.Nama] += saldo
-				} else if akun.KodeAkun == "4170" {
+				} else if kd == "4170" || kd == "700" {
 					itemWakaf.Values[entitas.Nama] += saldo
 					itemKasWakaf.Values[entitas.Nama] += saldo
 				} else {
@@ -1253,19 +1494,20 @@ func (a *App) GetLaporanKonsolidasi(mode string, periode int, tahun int, entitas
 					itemKasUsaha.Values[entitas.Nama] += saldo
 				}
 			case "Beban":
-				if akun.KodeAkun == "5110" {
+				kd := akun.KodeAkun
+				if kd == "5110" || kd == "101" || kd == "102" || kd == "103" {
 					itemGaji.Values[entitas.Nama] += saldo
 					itemKasGaji.Values[entitas.Nama] += saldo
-				} else if akun.KodeAkun == "5120" {
+				} else if kd == "5120" || kd == "104" || kd == "105" || kd == "106" || kd == "107" {
 					itemBebanBos.Values[entitas.Nama] += saldo
 					itemKasKonsumsi.Values[entitas.Nama] += saldo
-				} else if akun.KodeAkun == "5190" {
+				} else if kd == "5190" || kd == "801" || kd == "802" {
 					itemListrik.Values[entitas.Nama] += saldo
 					itemKasUtilitas.Values[entitas.Nama] += saldo
-				} else if akun.KodeAkun == "5170" {
+				} else if kd == "5170" || strings.HasPrefix(kd, "50") {
 					itemBebanBos.Values[entitas.Nama] += saldo
 					itemKasPembangunan.Values[entitas.Nama] += saldo
-				} else if akun.KodeAkun == "5180" {
+				} else if kd == "5180" || strings.HasPrefix(kd, "60") {
 					itemBebanBos.Values[entitas.Nama] += saldo
 					itemKasAsrama.Values[entitas.Nama] += saldo
 				} else {
@@ -1340,4 +1582,108 @@ func (a *App) GetLaporanKonsolidasi(mode string, periode int, tahun int, entitas
 	response.ArusKas = []models.LaporanKonsolidasiGroup{arusOperasi, arusInvestasi, arusPendanaan, arusRekonsiliasi}
 
 	return response, nil
+}
+
+// GetLaporanJHK menghasilkan Laporan Alokasi Kas / JHK (persis seperti sheet Laporan Akhir Excel)
+func (a *App) GetLaporanJHK(entitasID int, bulan int, tahun int) (models.LaporanJHKResponse, error) {
+	var resp models.LaporanJHKResponse
+	resp.Bulan = bulan
+	resp.Tahun = tahun
+
+	namaBulan := []string{"", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"}
+	if bulan >= 1 && bulan <= 12 {
+		resp.PeriodeNama = fmt.Sprintf("%s %d", namaBulan[bulan], tahun)
+	} else {
+		resp.PeriodeNama = fmt.Sprintf("Tahun %d", tahun)
+	}
+
+	var entitas models.Entitas
+	if err := database.DB.First(&entitas, entitasID).Error; err != nil {
+		return resp, fmt.Errorf("entitas tidak ditemukan: %v", err)
+	}
+	resp.EntitasName = entitas.Nama
+
+	startDate := fmt.Sprintf("%04d-%02d-01", tahun, bulan)
+	endDate := fmt.Sprintf("%04d-%02d-31", tahun, bulan)
+
+	// Definisi 10 Pos Anggaran Alokasi Excel
+	posList := []struct {
+		Kode     string
+		Nama     string
+		SubKodes []string
+	}{
+		{"100", "SPP", []string{"101", "102", "103", "104", "105", "106", "107", "108", "5110"}},
+		{"200", "Semesteran", []string{"201", "202", "203", "204", "205", "206", "207", "208", "209", "5130", "5140"}},
+		{"300", "Seragam", []string{"301", "302", "303", "5150"}},
+		{"400", "Buku", []string{"401", "402", "403", "5160"}},
+		{"500", "Sarpras", []string{"501", "502", "503", "504", "505", "506", "507", "5170"}},
+		{"600", "Asrama", []string{"601", "602", "603", "5180"}},
+		{"700", "Infaq", []string{"701", "702"}},
+		{"800", "Operasional", []string{"801", "802", "803", "804", "805", "806", "807", "808", "809", "810", "811", "5190", "5200", "5210"}},
+		{"900", "Form PPDB", []string{"901"}},
+		{"1000", "Dana BOS", []string{"1001", "4190"}},
+	}
+
+	for _, p := range posList {
+		item := models.LaporanJHKItem{
+			Kode:    p.Kode,
+			NamaPos: p.Nama,
+		}
+
+		// 1. Pemasukan (Debet) bulan berjalan
+		var resIn struct{ Total int64 }
+		database.DB.Table("jurnal_details").
+			Joins("JOIN transaksis ON transaksis.id = jurnal_details.transaksi_id").
+			Joins("JOIN akun_keuangans ON akun_keuangans.id = jurnal_details.akun_id").
+			Where("transaksis.entitas_id = ? AND transaksis.tanggal >= ? AND transaksis.tanggal <= ?", entitasID, startDate, endDate).
+			Where("(akun_keuangans.kode_akun = ? OR (akun_keuangans.kategori = 'Pendapatan' AND (akun_keuangans.nama_akun LIKE ? OR akun_keuangans.kode_akun LIKE ?)))", p.Kode, "%"+p.Nama+"%", p.Kode+"%").
+			Select("COALESCE(SUM(jurnal_details.kredit - jurnal_details.debit), 0) AS total").
+			Scan(&resIn)
+		item.Debet = resIn.Total
+
+		// 2. Pengeluaran (Kredit) bulan berjalan
+		var resOut struct{ Total int64 }
+		database.DB.Table("jurnal_details").
+			Joins("JOIN transaksis ON transaksis.id = jurnal_details.transaksi_id").
+			Joins("JOIN akun_keuangans ON akun_keuangans.id = jurnal_details.akun_id").
+			Where("transaksis.entitas_id = ? AND transaksis.tanggal >= ? AND transaksis.tanggal <= ?", entitasID, startDate, endDate).
+			Where("(akun_keuangans.kode_akun IN ? OR (akun_keuangans.kategori = 'Beban' AND (akun_keuangans.nama_akun LIKE ? OR akun_keuangans.kode_akun LIKE ?)))", p.SubKodes, "%"+p.Nama+"%", p.Kode[:len(p.Kode)-2]+"%").
+			Select("COALESCE(SUM(jurnal_details.debit - jurnal_details.kredit), 0) AS total").
+			Scan(&resOut)
+		item.Kredit = resOut.Total
+
+		item.Balance = item.Debet - item.Kredit
+
+		// 3. Saldo Awal (sebelum startDate)
+		var resInPrev struct{ Total int64 }
+		database.DB.Table("jurnal_details").
+			Joins("JOIN transaksis ON transaksis.id = jurnal_details.transaksi_id").
+			Joins("JOIN akun_keuangans ON akun_keuangans.id = jurnal_details.akun_id").
+			Where("transaksis.entitas_id = ? AND transaksis.tanggal < ?", entitasID, startDate).
+			Where("(akun_keuangans.kode_akun = ? OR (akun_keuangans.kategori = 'Pendapatan' AND (akun_keuangans.nama_akun LIKE ? OR akun_keuangans.kode_akun LIKE ?)))", p.Kode, "%"+p.Nama+"%", p.Kode+"%").
+			Select("COALESCE(SUM(jurnal_details.kredit - jurnal_details.debit), 0) AS total").
+			Scan(&resInPrev)
+
+		var resOutPrev struct{ Total int64 }
+		database.DB.Table("jurnal_details").
+			Joins("JOIN transaksis ON transaksis.id = jurnal_details.transaksi_id").
+			Joins("JOIN akun_keuangans ON akun_keuangans.id = jurnal_details.akun_id").
+			Where("transaksis.entitas_id = ? AND transaksis.tanggal < ?", entitasID, startDate).
+			Where("(akun_keuangans.kode_akun IN ? OR (akun_keuangans.kategori = 'Beban' AND (akun_keuangans.nama_akun LIKE ? OR akun_keuangans.kode_akun LIKE ?)))", p.SubKodes, "%"+p.Nama+"%", p.Kode[:len(p.Kode)-2]+"%").
+			Select("COALESCE(SUM(jurnal_details.debit - jurnal_details.kredit), 0) AS total").
+			Scan(&resOutPrev)
+
+		item.SaldoAwal = resInPrev.Total - resOutPrev.Total
+		item.SaldoAkhir = item.SaldoAwal + item.Balance
+
+		resp.Items = append(resp.Items, item)
+
+		resp.TotalDebet += item.Debet
+		resp.TotalKredit += item.Kredit
+		resp.TotalBalance += item.Balance
+		resp.TotalSaldoAwal += item.SaldoAwal
+		resp.TotalSaldoAkhir += item.SaldoAkhir
+	}
+
+	return resp, nil
 }
